@@ -377,7 +377,7 @@ void MQTT_Callback(char* topic, byte* payload, unsigned int length) {
 	}
 	Serial.println("]");
 
-	if (strcmp(topic, "/Henrique/IoT/TF/LED_LAVOURA") == 0) {
+	if (strcmp(topic, "/Henrique/IoT/TF/LED_CARRO") == 0) {
 		if (strcmp(message, "1") == 0) {
 			led_lavoura.on();
 		} else {
