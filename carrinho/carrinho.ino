@@ -42,7 +42,7 @@
 
 
 #define ULTRA_SONIC_READ_INTERVAL 100
-#define DHTR_READ_INTERVAL 500
+#define READ_INTERVAL 500
 #define DHTPIN 22
 #define DHTTYPE DHT11
 const int ldr_pin = A0;
@@ -142,50 +142,17 @@ WiFiClient wifiClient;
 
 PubSubClient mqttClient(wifiClient);
 
-class MQTT {
-private:
-	PubSubClient mqttClient;
-	char *mqtt_server;
-	uint16_t MQTT_PORT = 1883;
-public:
-	MQTT(char *mqtt_server) {
-		this->mqtt_server = mqtt_server;
-		this->mqttClient = PubSubClient(wifiClient);
-		this->mqttClient.setServer(mqtt_server, this->MQTT_PORT);
-	}
+void mqttConnect() {
+	char *clientId = "LuisaoMandaPixUrubu";
+	char *username = "OTE5XIMcFkuxztdsYVoMv7o3X1Xmb6vRdC80zCidsowo2t37XA5Y7hbKbJJf9l1a";
+	char *password = "";
 
-	void connect() {
-		char *clientId = "LuisaoMandaPixUrubu";
-		char *username = "OTE5XIMcFkuxztdsYVoMv7o3X1Xmb6vRdC80zCidsowo2t37XA5Y7hbKbJJf9l1a";
-		char *password = "";
-
-		while (!this->mqttClient.connected()) {
-			if (this->mqttClient.connect(clientId, username, password)) {
-				Serial.println("Connected to MQTT broker.");
-			}
+	while (!mqttClient.connected()) {
+		if (mqttClient.connect(clientId, username, password)) {
+			Serial.println("Connected to MQTT broker.");
 		}
 	}
-
-
-	void loop() {
-		if (!this->mqttClient.connected()){
-			this->connect();
-		}
-		this->mqttClient.loop();
-	}
-
-	void setCallback(void (*callback)(char*, byte*, unsigned int)) {
-		this->mqttClient.setCallback(callback);
-	}
-
-	void subscribe(const char *topic) {
-		this->mqttClient.subscribe(topic);
-	}
-
-	void publish(const char *topic, const char *message) {
-		this->mqttClient.publish(topic, message);
-	}
-};
+}
 
 class LED {
 private:
@@ -208,7 +175,13 @@ public:
 		digitalWrite(this->pin, LOW);
 	}
 
+	bool isOn() {
+		return digitalRead(this->pin) == HIGH;
+	}
+
 	void toggle() {
+		Serial.print("Toggling LED ");
+		Serial.println(this->pin);
 		digitalWrite(this->pin, !digitalRead(this->pin));
 	}
 };
@@ -353,21 +326,21 @@ void ConnectToWiFi(){
 	// delay(500);
 	// mqttClient.publish("/srs/usrs/LUISAO-MandaPix-10pila/IoT", "1");
 
-Motor *motorD = new Motor(35, 32);
+Motor *motorD = new Motor(12, 13);
 Motor *motorE = new Motor(33, 25);
 ponteH *ponte = new ponteH(motorD, motorE);
 // TRIGGER > ECHO
-Sensor *SensorFrontal = new Sensor(34, 39);
+Sensor *SensorFrontal = new Sensor(26, 27);
 
-MQTT mqtt = MQTT("mqtt.flespi.io");
-LED led_lavoura = LED(2); // Led da Lavoura, controlado pelo MQTT
+// MQTT mqtt = MQTT("mqtt.flespi.io");
+LED led_carro = LED(2); // Led da Lavoura, controlado pelo MQTT
 LED led_estufa = LED(4); // Led da Estufa, controlado pelo MQTT e pelo LDR
 
 void MQTT_Callback(char* topic, byte* payload, unsigned int length) {
-	if (1 == 1) {
-		Serial.println("ReceivedMessage! But I was not implemented to do anything with it ;-;, sorry...");
-		return;
-	}
+	// if (1 == 1) {
+	// 	Serial.println("ReceivedMessage! But I was not implemented to do anything with it ;-;, sorry...");
+	// 	return;
+	// }
 	char message[100];
 	Serial.println("ReceivedMessage!");	
 	Serial.print("Message arrived [");
@@ -377,15 +350,26 @@ void MQTT_Callback(char* topic, byte* payload, unsigned int length) {
 	}
 	Serial.println("]");
 
+	Serial.println(topic);
+
 	if (strcmp(topic, "/Henrique/IoT/TF/LED_CARRO") == 0) {
+		Serial.println("Topic found!");
+		Serial.print("Message: ");
+		Serial.println(message);
 		if (strcmp(message, "1") == 0) {
-			led_lavoura.on();
+			led_carro.on();
+		} else if (message[0] == '2') { 
+			led_carro.toggle();
+			mqttClient.publish("/Henrique/IoT/TF/LED_CARRO/Status", led_carro.isOn() ? "1" : "0");
 		} else {
-			led_lavoura.off();
+			led_carro.off();
 		}
 	} else if (strcmp(topic, "/Henrique/IoT/TF/LED_ESTUFA") == 0) {
 		if (strcmp(message, "1") == 0) {
-			led_estufa.on();
+			// led_estufa.on();
+		} else if (message[0] == '2') { 
+			led_estufa.toggle();
+			mqttClient.publish("/Henrique/IoT/TF/LED_ESTUFA/Status", led_estufa.isOn() ? "1" : "0");
 		} else {
 			led_estufa.off();
 		}
@@ -400,9 +384,14 @@ bool isMovingBackward = false;
 void setup() {
 	Serial.begin(115200);
 
+	ConnectToWiFi();
+
 	Serial.printf("Firmware: %s\n", BP32.firmwareVersion());
 	const uint8_t *addr = BP32.localBdAddress();
 	Serial.printf("BD Addr: %2X:%2X:%2X:%2X:%2X:%2X\n", addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+
+	led_carro.setup();
+	led_estufa.setup();
 
 	// Setup the Bluepad32 callbacks
 	BP32.setup(&onConnectedGamepad, &onDisconnectedGamepad);
@@ -414,26 +403,46 @@ void setup() {
 	// But might also fix some connection / re-connection issues.
 	BP32.forgetBluetoothKeys();
 
-	mqtt.connect();
-	mqtt.setCallback(MQTT_Callback);
+	Serial.println("Bluepad32 setup complete!");
+	Serial.println("Iniciando conexão com o MQTT...");
+
+	mqttClient.setServer("mqtt.flespi.io", 1883);
+	mqttClient.setCallback(MQTT_Callback);
+	mqttConnect();
+	mqttClient.subscribe("/Henrique/IoT/TF/LED_CARRO");
+	mqttClient.subscribe("/Henrique/IoT/TF/LED_ESTUFA");
+
+	Serial.println("Connected to MQTT broker!");
 
 	dht.begin();
 	// carro.setup();
 
 	ponte->setup();
+	SensorFrontal->setup();
 
 	Serial.println("Setup completo!");
 }
 
 unsigned long lastRead = 0;
 
+int cur_sensor = 1;
+int ldr_read_count = 0;
+int ldr_medium[10];
+int ldr_medium_idx = 0;
+
 void loop() {
+	if (!mqttClient.connected()){
+		mqttConnect();
+	}
+	mqttClient.loop();
 
 	// This call fetches all the gamepad info from the NINA (ESP32) module.
 	// Just call this function in your main loop.
 	// The gamepads pointer (the ones received in the callbacks) gets updated
 	// automatically.
 	BP32.update();
+
+	int front_distance = SensorFrontal->loop();
 
 	// It is safe to always do this before using the gamepad API.
 	// This guarantees that the gamepad is valid and connected.
@@ -490,13 +499,29 @@ void loop() {
 			int brake = myGamepad->brake();
 
 			if (throttle > 0) {
+				if (front_distance < 30) {
+					ponte->stop();
+					led_carro.on();
+					mqttClient.publish("/Henrique/IoT/TF/LED_CARRO/Status", "1");
+					continue;
+				} else {
+					led_carro.off();
+					mqttClient.publish("/Henrique/IoT/TF/LED_CARRO/Status", "0");
+				}
 				// ponte->forward_percent(throttle);
 				ponte->forward();
 			} else if (brake > 0) {
 				// ponte->backward_percent(brake);
 				ponte->backward();
 			} else {
-				ponte->stop();
+				int axisX = myGamepad->axisX();
+				if (axisX < -100) { // Esquerda!
+					ponte->turnRight(); // Os motores estão invertidos...
+				} else if (axisX > 100) { // Direita!
+					ponte->turnLeft(); // Motores invertidos...
+				} else {
+					ponte->stop();
+				}
 			}
 		}
 	}
@@ -504,14 +529,42 @@ void loop() {
 	// carro.loop();
 	// mqtt.loop();
 
-	if (millis() - lastRead > DHTR_READ_INTERVAL) {
+	if (millis() - lastRead > READ_INTERVAL) {
 		lastRead = millis();
 
-		float temp = readDHTTemp();
-		float humi = readDHTHumidity();
-		int ldr = analogRead(ldr_pin);
-		mqtt.publish("/IoT/temperature", String(temp).c_str());
-		mqtt.publish("/IoT/humidity", String(humi).c_str());
-		mqtt.publish("/IoT/ldr", String(ldr).c_str());
+		if (cur_sensor == 1) {
+			int ldr = analogRead(ldr_pin);
+			ldr_read_count++;
+			Serial.print(ldr_read_count);
+			Serial.print(") LDR: ");
+			Serial.println(ldr);
+			cur_sensor = 2;
+			ldr_medium[ldr_medium_idx] = ldr;
+			ldr_medium_idx++;
+			ldr_medium_idx = ldr_medium_idx % 10;
+		} else {
+			float temp = readDHTTemp();
+			Serial.print("Temperatura: ");
+			Serial.println(temp);
+			float humi = readDHTHumidity();
+			Serial.print("Umidade: ");
+			Serial.println(humi);
+			cur_sensor = 1;
+
+			mqttClient.publish("/Henrique/IoT/TF/DHT/Temperature", String(temp).c_str());
+			mqttClient.publish("/Henrique/IoT/TF/DHT/Humidity", String(humi).c_str());
+			if (ldr_read_count >= 10) {
+				int ldr_read = 0;
+				for (int i = 0; i < 10; i++) {
+					ldr_read += ldr_medium[i];
+				}
+				ldr_read /= 10;
+				mqttClient.publish("/Henrique/IoT/TF/LDR", String(ldr_read).c_str());
+				if (ldr_read < 75) {
+					led_estufa.on();
+					mqttClient.publish("/Henrique/IoT/TF/LED_ESTUFA/Status", "1");
+				}
+			}
+		}
 	}
 }
