@@ -49,8 +49,8 @@ const int ldr_pin = A0;
 
 DHT dht(DHTPIN, DHTTYPE);
 
-const char* ssid = "Canguru";
-const char* password = "VamoPula";
+const char* ssid = "Your Wifi-SSID";
+const char* password = "Your Wifi-Password";
 
 GamepadPtr myGamepads[BP32_MAX_GAMEPADS];
 
@@ -143,8 +143,8 @@ WiFiClient wifiClient;
 PubSubClient mqttClient(wifiClient);
 
 void mqttConnect() {
-	char *clientId = "LuisaoMandaPixUrubu";
-	char *username = "OTE5XIMcFkuxztdsYVoMv7o3X1Xmb6vRdC80zCidsowo2t37XA5Y7hbKbJJf9l1a";
+	char *clientId = "CLIENTID-UNIFESP-2024/2";
+	char *username = "FLESPI-API_KEY REMOVED FROM HERE (ALSO DELETED)";
 	char *password = "";
 
 	while (!mqttClient.connected()) {
